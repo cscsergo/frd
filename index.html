@@ -49,7 +49,15 @@
   input {
     width: 100%; padding: 10px 12px; font: inherit; color: var(--text);
     background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
+    display: block; min-width: 0; max-width: 100%;
   }
+  /* iOS Safari: a dátummező ne lógjon ki és ne legyen középre zárt */
+  input[type="date"] {
+    -webkit-appearance: none; appearance: none;
+    min-height: 44px; text-align: left;
+  }
+  input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+  .row > input { flex: 1 1 0; width: auto; }
   button {
     font: inherit; font-weight: 600; padding: 11px 14px; border-radius: 10px;
     border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer;
