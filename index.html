@@ -7,7 +7,12 @@
 <meta name="theme-color" content="#2f6f5e">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FRD">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
   :root {
     --bg: #f4f6f5; --card: #ffffff; --text: #1c2421; --muted: #66726d;
@@ -74,6 +79,25 @@
 <body>
 <main>
   <h1 id="title">FRD</h1>
+
+  <section class="card" id="authCard">
+    <div id="loggedOut">
+      <h2>Bejelentkezés (felhő mentés)</h2>
+      <div class="field"><label for="email">E-mail</label><input type="email" id="email" autocomplete="email"></div>
+      <div class="field"><label for="password">Jelszó</label><input type="password" id="password" autocomplete="current-password"></div>
+      <div class="row">
+        <button class="primary" id="loginBtn">Belépés</button>
+        <button id="linkBtn">Belépési link e-mailben</button>
+      </div>
+      <p class="hint" id="authMsg">Belépés nélkül csak ezen az eszközön tárolódnak az adatok.</p>
+    </div>
+    <div id="loggedIn" hidden>
+      <div class="row" style="justify-content:space-between">
+        <div style="flex:1 1 60%"><div id="userEmail" style="font-weight:600;word-break:break-all"></div><div class="tag" id="syncStatus"></div></div>
+        <button class="small" id="logoutBtn" style="flex:0 0 auto">Kilépés</button>
+      </div>
+    </div>
+  </section>
 
   <section class="card status">
     <div class="label">Következő esedékesség</div>
@@ -166,8 +190,74 @@
   }
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+    pushRemote();
   }
   let state = load();
+
+  // ---- Supabase cloud sync ----
+  const SB_URL = 'https://rfjegxblgadmnrosxreb.supabase.co';
+  const SB_KEY = 'sb_publishable_hLRz7AvzmJFyvqHMqOTDoA_MTWBRwzT';
+  const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
+  let user = null, pushTimer = null;
+
+  const setSync = (t) => { $('syncStatus').textContent = t; };
+  function showAuth() {
+    $('loggedOut').hidden = !!user;
+    $('loggedIn').hidden = !user;
+    if (user) $('userEmail').textContent = user.email || 'Bejelentkezve';
+  }
+  function pushRemote() {
+    if (!sb || !user) return;
+    clearTimeout(pushTimer);
+    setSync('Mentés…');
+    pushTimer = setTimeout(async () => {
+      const { error } = await sb.from('frd_state')
+        .upsert({ user_id: user.id, data: state, updated_at: new Date().toISOString() });
+      setSync(error ? 'Mentési hiba: ' + error.message : 'Felhőbe mentve ✓');
+    }, 400);
+  }
+  async function pullRemote() {
+    if (!sb || !user) return;
+    setSync('Betöltés…');
+    const { data, error } = await sb.from('frd_state').select('data').eq('user_id', user.id).maybeSingle();
+    if (error) { setSync('Betöltési hiba: ' + error.message); return; }
+    if (data && data.data && data.data.next) {
+      state = data.data;
+      try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+      render(); setSync('Szinkronizálva ✓');
+    } else {
+      pushRemote(); // első belépés: a helyi adatok felkerülnek
+    }
+  }
+  async function onSession(session) {
+    const was = user && user.id;
+    user = session ? session.user : null;
+    showAuth();
+    if (user && user.id !== was) await pullRemote();
+  }
+  if (sb) {
+    sb.auth.getSession().then(({ data }) => onSession(data.session));
+    sb.auth.onAuthStateChange((_e, session) => onSession(session));
+  } else {
+    $('authMsg').textContent = 'A felhő mentés most nem érhető el (nincs internet?). Az adatok helyben tárolódnak.';
+  }
+  $('loginBtn').onclick = async () => {
+    const email = $('email').value.trim(), password = $('password').value;
+    if (!email || !password) { $('authMsg').textContent = 'Add meg az e-mail-címet és a jelszót.'; return; }
+    $('authMsg').textContent = 'Belépés…';
+    const { error } = await sb.auth.signInWithPassword({ email, password });
+    $('authMsg').textContent = error ? 'Hiba: ' + error.message : '';
+    if (!error) $('password').value = '';
+  };
+  $('linkBtn').onclick = async () => {
+    const email = $('email').value.trim();
+    if (!email) { $('authMsg').textContent = 'Add meg az e-mail-címet.'; return; }
+    const { error } = await sb.auth.signInWithOtp({
+      email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname }
+    });
+    $('authMsg').textContent = error ? 'Hiba: ' + error.message : 'Elküldtem a belépési linket. Nyisd meg ezen az eszközön.';
+  };
+  $('logoutBtn').onclick = async () => { await sb.auth.signOut(); };
 
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -276,7 +366,11 @@
   };
 
   // re-render when returning to the app on a new day
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    render();
+    pullRemote(); // másik eszközön végzett változások behúzása
+  });
   render();
 })();
 </script>

@@ -8,7 +8,9 @@ Egyszerű webapp egy ismétlődő teendő (FRD) nyilvántartására.
 - **Előzmények** – mikor végezted el, és hány nap késéssel.
 - **Export / import** – JSON mentés, más eszközre átvitelhez.
 
-Az adatok a böngésző `localStorage`-ában tárolódnak (eszközönként külön).
+Belépés nélkül az adatok a böngésző `localStorage`-ában tárolódnak (eszközönként külön).
+Bejelentkezve a Supabase `frd_state` táblájába is mentődnek (soronkénti védelem: mindenki csak a saját sorát látja),
+így minden eszközön ugyanaz az állapot jelenik meg.
 Telefonon „Hozzáadás a kezdőképernyőhöz” után appként használható.
 
 Élő verzió: GitHub Pages.
