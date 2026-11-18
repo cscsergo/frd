@@ -83,12 +83,7 @@
   <section class="card" id="authCard">
     <div id="loggedOut">
       <h2>Bejelentkezés (felhő mentés)</h2>
-      <div class="field"><label for="email">E-mail</label><input type="email" id="email" autocomplete="email"></div>
-      <div class="field"><label for="password">Jelszó</label><input type="password" id="password" autocomplete="current-password"></div>
-      <div class="row">
-        <button class="primary" id="loginBtn">Belépés</button>
-        <button id="linkBtn">Belépési link e-mailben</button>
-      </div>
+      <button class="primary" id="googleBtn" style="width:100%">Belépés Google-lal</button>
       <p class="hint" id="authMsg">Belépés nélkül csak ezen az eszközön tárolódnak az adatok.</p>
     </div>
     <div id="loggedIn" hidden>
@@ -241,21 +236,13 @@
   } else {
     $('authMsg').textContent = 'A felhő mentés most nem érhető el (nincs internet?). Az adatok helyben tárolódnak.';
   }
-  $('loginBtn').onclick = async () => {
-    const email = $('email').value.trim(), password = $('password').value;
-    if (!email || !password) { $('authMsg').textContent = 'Add meg az e-mail-címet és a jelszót.'; return; }
-    $('authMsg').textContent = 'Belépés…';
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    $('authMsg').textContent = error ? 'Hiba: ' + error.message : '';
-    if (!error) $('password').value = '';
-  };
-  $('linkBtn').onclick = async () => {
-    const email = $('email').value.trim();
-    if (!email) { $('authMsg').textContent = 'Add meg az e-mail-címet.'; return; }
-    const { error } = await sb.auth.signInWithOtp({
-      email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname }
+  $('googleBtn').onclick = async () => {
+    if (!sb) return;
+    $('authMsg').textContent = 'Átirányítás a Google-hoz…';
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: 'google', options: { redirectTo: location.origin + location.pathname }
     });
-    $('authMsg').textContent = error ? 'Hiba: ' + error.message : 'Elküldtem a belépési linket. Nyisd meg ezen az eszközön.';
+    if (error) $('authMsg').textContent = 'Hiba: ' + error.message;
   };
   $('logoutBtn').onclick = async () => { await sb.auth.signOut(); };
 
