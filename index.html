@@ -234,11 +234,11 @@
       pushRemote(); // első belépés: a helyi adatok felkerülnek
     }
   }
-  async function onSession(session) {
+  function onSession(session) {
     const was = user && user.id;
     user = session ? session.user : null;
     showAuth();
-    if (user && user.id !== was) await pullRemote();
+    if (user && user.id !== was) pullRemote();
   }
   // A Supabase könyvtár az app megjelenése UTÁN, a háttérben töltődik be.
   function initSync() {
@@ -246,8 +246,10 @@
     s.src = SB_LIB; s.async = true;
     s.onload = () => {
       sb = window.supabase.createClient(SB_URL, SB_KEY);
+      // FONTOS: az onAuthStateChange-en belül nem szabad Supabase hívásra várni,
+      // mert a supabase-js zárolása miatt beragad. Ezért setTimeout-tal kiléptetjük.
+      sb.auth.onAuthStateChange((_e, session) => { setTimeout(() => onSession(session), 0); });
       sb.auth.getSession().then(({ data }) => onSession(data.session));
-      sb.auth.onAuthStateChange((_e, session) => onSession(session));
     };
     s.onerror = () => {
       $('authMsg').textContent = 'A felhő mentés most nem érhető el (nincs internet?). Az adatok helyben tárolódnak.';
