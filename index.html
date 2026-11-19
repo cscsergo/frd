@@ -12,7 +12,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="FRD">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://rfjegxblgadmnrosxreb.supabase.co" crossorigin>
 <style>
   :root {
     --bg: #f4f6f5; --card: #ffffff; --text: #1c2421; --muted: #66726d;
@@ -200,8 +201,9 @@
   // ---- Supabase cloud sync ----
   const SB_URL = 'https://rfjegxblgadmnrosxreb.supabase.co';
   const SB_KEY = 'sb_publishable_hLRz7AvzmJFyvqHMqOTDoA_MTWBRwzT';
-  const sb = window.supabase ? window.supabase.createClient(SB_URL, SB_KEY) : null;
-  let user = null, pushTimer = null;
+  // Ugyanaz a cím, mint a többi NetguY appban -> a böngésző a már letöltött példányt használja
+  const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+  let sb = null, user = null, pushTimer = null, lastPull = 0;
 
   const setSync = (t) => { $('syncStatus').textContent = t; };
   function showAuth() {
@@ -221,7 +223,7 @@
   }
   async function pullRemote() {
     if (!sb || !user) return;
-    setSync('Betöltés…');
+    lastPull = Date.now();
     const { data, error } = await sb.from('frd_state').select('data').eq('user_id', user.id).maybeSingle();
     if (error) { setSync('Betöltési hiba: ' + error.message); return; }
     if (data && data.data && data.data.next) {
@@ -238,12 +240,26 @@
     showAuth();
     if (user && user.id !== was) await pullRemote();
   }
-  if (sb) {
-    sb.auth.getSession().then(({ data }) => onSession(data.session));
-    sb.auth.onAuthStateChange((_e, session) => onSession(session));
-  } else {
-    $('authMsg').textContent = 'A felhő mentés most nem érhető el (nincs internet?). Az adatok helyben tárolódnak.';
+  // A Supabase könyvtár az app megjelenése UTÁN, a háttérben töltődik be.
+  function initSync() {
+    const s = document.createElement('script');
+    s.src = SB_LIB; s.async = true;
+    s.onload = () => {
+      sb = window.supabase.createClient(SB_URL, SB_KEY);
+      sb.auth.getSession().then(({ data }) => onSession(data.session));
+      sb.auth.onAuthStateChange((_e, session) => onSession(session));
+    };
+    s.onerror = () => {
+      $('authMsg').textContent = 'A felhő mentés most nem érhető el (nincs internet?). Az adatok helyben tárolódnak.';
+    };
+    document.head.appendChild(s);
   }
+  // Belépett állapot gyors megjelenítése, amíg a könyvtár betölt
+  try {
+    const k = Object.keys(localStorage).find((x) => /^sb-.*-auth-token$/.test(x));
+    const t = k && JSON.parse(localStorage.getItem(k));
+    if (t && t.user) { $('loggedOut').hidden = true; $('loggedIn').hidden = false; $('userEmail').textContent = t.user.email || ''; $('syncStatus').textContent = 'Kapcsolódás…'; }
+  } catch (e) {}
   $('googleBtn').onclick = async () => {
     if (!sb) return;
     $('authMsg').textContent = 'Átirányítás a Google-hoz…';
@@ -252,7 +268,7 @@
     });
     if (error) $('authMsg').textContent = 'Hiba: ' + error.message;
   };
-  $('logoutBtn').onclick = async () => { await sb.auth.signOut(); };
+  $('logoutBtn').onclick = async () => { if (sb) await sb.auth.signOut(); };
 
   function toast(msg) {
     const t = $('toast'); t.textContent = msg; t.classList.add('show');
@@ -364,9 +380,11 @@
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     render();
-    pullRemote(); // másik eszközön végzett változások behúzása
+    // másik eszközön végzett változások behúzása, legfeljebb 3 percenként
+    if (Date.now() - lastPull > 3 * 60e3) pullRemote();
   });
   render();
+  initSync();
 })();
 </script>
 </body>
